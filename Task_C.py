@@ -53,6 +53,23 @@ cc = Parameter(
     records = [['1', 0.0025]] # Enter like this: [["Yellow", "Giraffe", 4], ["Brown", "Bear", 10]]
 )
 
+deficit = Parameter(
+    container = cont, # use your container name
+    name = "def",
+    description = "deficit on interval k",
+    domain = k, # Enter the name of the set, where it should apply to each member of.
+    records = [['1', -180], 
+               ['2', -140], 
+               ['3', -70], 
+               ['4', -120], 
+               ['5', -150], 
+               ['6', -40], 
+               ['7', 90], 
+               ['8', 0], 
+               ['9', 50], 
+               ] # Enter like this: [["Yellow", "Giraffe", 4], ["Brown", "Bear", 10]]
+)
+
 # 3. Define Variables
 r = Variable(
     container = cont, #use your container name
@@ -78,24 +95,8 @@ qw = Variable(
     description = "heat load of utility n (given cold utility)"
 )
 
-# 4. Define Constraints (Equations)
-deficit = Parameter(
-    container = cont, # use your container name
-    name = "def",
-    description = "deficit on interval k",
-    domain = k, # Enter the name of the set, where it should apply to each member of.
-    records = [['1', -180], 
-               ['2', -140], 
-               ['3', -70], 
-               ['4', -120], 
-               ['5', -450], 
-               ['6', -40], 
-               ['7', 90], 
-               ['8', 0], 
-               ['9', 50], 
-               ] # Enter like this: [["Yellow", "Giraffe", 4], ["Brown", "Bear", 10]]
-)
 
+# 4. Define Constraints (Equations)
 r_int_eq = Equation(
     container = cont,
     name = "r_int_eq",
@@ -148,3 +149,9 @@ print(f"Optimal Cost: {MinUtil.objective_value}")
 MinUtil.toLatex(path="/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/TEX/Task_C", generate_pdf=False)
 # Generate GAMS File using:
 MinUtil.toGams(path="/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/GAMS/Task_C")
+
+# Generate Custom Latex Output:
+k_list = r.records['k'].tolist()
+residual_list = r.records['level'].tolist()
+for i, k in enumerate(k_list):
+        print(f'{k} & {residual_list[i]} \\\\')
