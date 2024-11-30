@@ -13,7 +13,7 @@ import pandas as pd
 import sys
 import numpy as np
 from gamspy import Container, Set, Parameter, Variable, Equation, Model, Sum, Sense, Options
-from gamspy.math import Min, Max
+from gamspy.math import Min, Max, sqrt
 import matplotlib.pyplot as plt
 import json
 import os
@@ -660,6 +660,7 @@ class SynheatModel:
                 variable_listing_limit=100,
             ),
         )
+        self._current_objective_value = model.objective_value
         return model
 
     def add_integer_cut(self, tuples_with_level_one):
@@ -729,3 +730,150 @@ class SynheatModel:
         if save_path:
             plt.savefig(save_path, dpi=300)
         plt.show()
+
+    def _calculate_areas(self):
+        m = self.m
+        a,al, i, j, k, st, q, hh, hc, dt = (m['a'], 
+                                            m['al'],
+                                            m['i'], 
+                                            m['j'], 
+                                            m['k'], 
+                                            m['st'], 
+                                            m['q'], 
+                                            m['hh'], 
+                                            m['hc'], 
+                                            m['dt'])
+        # Using Chen approximation
+        a[i,j,k].where[st[k]] = (q.l[i,j,k]*((1/hh[i])+(1/hc[j]))/
+                                (2/3*sqrt(dt.l[i,j,k]*dt.l[i,j,k.lead(1)]) +
+                                1/6*(1e-8 + dt.l[i,j,k] + dt.l[i,j,k.lead(1)])))
+        # Using Log mean temperature
+        al[i,j,k].where[st[k]] = ((q.l[i,j,k]*((1/hh[i])+(1/hc[j])))/
+                                (dt.l[i,j,k]*dt.l[i,j,k.lead(1)]*
+                                (dt.l[i,j,k]+dt.l[i,j,k.lead(1)])/2)**0.33333)
+
+        ahu, qh, hhu, thuin, tcout, dthu, qc, acu, thout, tcuin, dtcu, hcu = (m['ahu'], 
+                                                                              m['qh'], 
+                                                                              m['hhu'], 
+                                                                              m['thuin'],
+                                                                              m['tcout'],
+                                                                              m['dthu'],
+                                                                              m['qc'],
+                                                                              m['acu'],
+                                                                              m['thout'], 
+                                                                              m['tcuin'], 
+                                                                              m['dtcu'], 
+                                                                              m['hcu'])
+
+        ahu[j] = (qh.l[j]*((1/hc[j]) + (1/hhu))/(((thuin-tcout[j])*dthu.l[j]*
+                ((thuin-tcout[j]+dthu.l[j]))/2) + 1e-6)**0.33333) 
+
+        acu[i] = ((qc.l[i]*((1/hh[i])+(1/hcu))/(((thout[i]-tcuin)*dtcu.l[i]*
+                 (thout[i]-tcuin+dtcu.l[i])/2 + 1e-6)**0.33333)) )
+
+    def _calculate_utilities_cost(self):
+        """Calculates the utilties cost in [USD / yr]"""
+        m = self.m
+        costheat, j, qh, hucost, i, cucost, hours, qc = (m['costheat'],
+                                                        m['j'], 
+                                                        m['qh'], 
+                                                        m['hucost'], 
+                                                        m['i'], 
+                                                        m['cucost'], 
+                                                        m['hours'], 
+                                                        m['qc'])
+        # When assigning values to a scalar parameter in gampspy:
+        # provide ellipsis literal [...]
+        costheat[...] = Sum(j,qh.l[j]*hucost)*hours
+        costcool = m['costcool']
+        costcool[...] = Sum(i,qc.l[i]*cucost)*hours
+
+    def _calculate_fixed_investment_cost(self):
+        invcost= self.m['invcost']
+        # Note the below equation ommits the hours, since the utility cost are annual already
+        invcost[...] = (self._current_objective_value - (self.m['costheat'] + self.m['costcool']))/self.m['acc']
+
+
+    def print_data(self, active_exchangers = True, 
+                   heat_exchanged_internal = True,
+                   temperatures_hot_streams = True,
+                   temperatures_cold_streams = True,
+                   heat_exchanger_areas = True, 
+                   utilities = True, 
+                   utilities_cost = True,
+                   fixed_investment_cost = True,
+                   ):
+        _is_active = self.m['z'].records[self.m['z'].records['level']==1][['i', 'j', 'k']].apply(tuple, axis=1).tolist()
+        active_z = self.m['z'].records[self.m['z'].records['level']==1][['i', 'j', 'k', 'level']]
+
+        if active_exchangers:
+            print('\n')
+            print("z-values of active heat exchangers inside the HEN:")
+            print(active_z)
+            print('\n')
+        q_internal = self.m['q'].records
+        active_q_internal = q_internal[q_internal.apply(lambda row: (row['i'], row['j'], row['k']) in _is_active, axis=1)][['i', 'j', 'k', 'level']]
+
+        if heat_exchanged_internal:
+            print('heat exchanged (q[i, j, k]) inside HEN / [MW]\n', active_q_internal.round(2))
+            print('\n')
+
+        th = self.m['th'].records
+        if temperatures_hot_streams:
+            print('temperature hot streams i at temperature location k')
+            print(th[['i', 'k', 'level']].round(2))
+            print('\n')
+        
+
+        tc = self.m['tc'].records
+        if temperatures_cold_streams:
+            print('temperature cold streams j at temperature location k')
+            print(tc[['j', 'k', 'level']].round(2))
+            print('\n')
+
+
+        if heat_exchanger_areas:
+            self._calculate_areas()
+            # all values
+            chen_area = self.m['a'].records
+            log_area = self.m['al'].records
+            # filter by activeness
+            chen_area = chen_area[chen_area.apply(lambda row: (row['i'], row['j'], row['k']) in _is_active, axis=1)]
+            log_area = log_area[log_area.apply(lambda row: (row['i'], row['j'], row['k']) in _is_active, axis=1)]
+            # internal areas
+            print('area calculated by Chens Approximation [m2]\n', chen_area[['i', 'j', 'k', 'value']].round(2))
+            print('\n')
+            print('area calculated with logmean temperature difference [m2]\n', log_area[['i', 'j', 'k', 'value']].round(2))
+            print('\n')
+            # utilities areas
+            print('hot utility hx area  with cold stream j [m2]\n', self.m['ahu'].records[['j', 'value']].round(2))
+            print('\n')
+            print('cold utility hx area with hot stream i [m2]\n', self.m['acu'].records[['i', 'value']].round(2))
+            print('\n')
+
+        if utilities:
+            print("hot utility heat [MW]")
+            qh = self.m['qh'].records
+            print("heat q [MW] to cold streams from hot utilities")
+            print(qh[['j', 'level']].round(2))
+            print('\n')
+
+            print("cold utility heat [MW]")
+            qc = self.m['qc'].records
+            print("heat q [MW] from hot streams to cold utilities")
+            print(qc[['i', 'level']].round(2))
+            print('\n')
+
+
+        # Cost calculations:
+        self._calculate_utilities_cost()
+        if utilities_cost:
+            print('The utilities cost: [USD / yr]')
+            print('Heating cost:', self.m['costheat'].records['value'][0].round(2))
+            print('Cooling cost:', self.m['costcool'].records['value'][0].round(2))
+            print('\n')
+
+        self._calculate_fixed_investment_cost()
+        if fixed_investment_cost:
+            print('The fixed investment cost: [USD] (total paid on day one)')
+            print(self.m['invcost'].records['value'][0].round(2))

@@ -47,15 +47,19 @@ print(f'Task A: Cooling: {sum_cooling_duty} MW.')
 
 # Task E
 synheat_1 = SynheatModel()
-results_file = '/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/JSON/Synheat_last_run.json'
+synheat_1.solve_model()
+synheat_1.print_data()
 
-# Load previous results if they exist
-synheat_1.load_results_from_json(results_file)
+# # Task G
+# synheat_2 = SynheatModel()
+# # Load previous results if they exist
+# results_file = '/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/JSON/Synheat_last_run.json'
+# synheat_2.load_results_from_json(results_file)
 
-# Run the model with integer cuts if results are not already loaded
-if not synheat_1.results:
-    synheat_1.run_with_integer_cuts(max_cuts=10)
-    synheat_1.save_results_to_json(results_file)
+# # Run the model with integer cuts if results are not already loaded
+# if not synheat_2.results:
+#     synheat_2.run_with_integer_cuts(max_cuts=50)
+#     synheat_2.save_results_to_json(results_file)
 
-# Plot the results
-synheat_1.plot_results('/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/Figures/synheatPlot')
+# # Plot the results
+# synheat_2.plot_results('/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/Figures/synheatPlot')
