@@ -1,5 +1,6 @@
 from utility import Utility
 from stream import Stream
+from synheat import SynheatModel
 
 streams = {
     # Stream(name, fcp, temperature_in, temperature_out, stream_film_coefficient, stream_type)
@@ -24,6 +25,7 @@ Utility.number_of_utilities()
 hot_streams = ["H1", "H2", "H3"]
 cold_streams = ["C1", "C2", "C3"]
 
+# Task A
 
 sum_heat_duty = 0
 for h_str in hot_streams:
@@ -42,3 +44,18 @@ for c_str in cold_streams:
     duty_str = (T_in_str - T_out_str) * fcp
     sum_cooling_duty += duty_str
 print(f'Task A: Cooling: {sum_cooling_duty} MW.')
+
+# Task E
+synheat_1 = SynheatModel()
+results_file = '/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/JSON/Synheat_last_run.json'
+
+# Load previous results if they exist
+synheat_1.load_results_from_json(results_file)
+
+# Run the model with integer cuts if results are not already loaded
+if not synheat_1.results:
+    synheat_1.run_with_integer_cuts(max_cuts=10)
+    synheat_1.save_results_to_json(results_file)
+
+# Plot the results
+synheat_1.plot_results('/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/Figures/synheatPlot')

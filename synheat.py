@@ -17,14 +17,46 @@ from gamspy.math import Min, Max
 import matplotlib.pyplot as plt
 import json
 import os
+from settings import Settings
 
 class SynheatModel:
     def __init__(self, name="super_heat"):
         """Initializes the synheat model, note that the objective function is
-        declared in the _build_model method."""
+        declared in the _build_model() method."""
         # Initialize container
         self.m = Container()
+        self.settings = Settings()
         self.name = name
+        self.num_hot_streams = self.settings.num_hot_streams
+        self.num_cold_streams = self.settings.num_cold_streams
+        self.num_stages = self.settings.num_stages
+        self.acc = self.settings.annual_capital_charge_ratio
+        self.hours = self.settings.annual_operation_hours
+        self.fh = self.settings.fcp_hot
+        self.fc = self.settings.fcp_cold
+        self.thin = self.settings.supply_temperature_hot_streams
+        self.thout = self.settings.target_temperature_hot_streams
+        self.tcin = self.settings.supply_temperature_cold_streams
+        self.tcout = self.settings.target_temperature_cold_streams
+        self.hh = self.settings.stream_film_coefficients_hot
+        self.hc = self.settings.stream_film_coefficients_cold
+        self.hucost = self.settings.heat_utility_cost
+        self.cucost = self.settings.cooling_utility_cost
+        self.unitc = self.settings.fixed_cost_heat_exchangers
+        self.acoeff = self.settings.area_cost_coefficient_exchangers
+        self.hucoeff = self.settings.area_cost_coefficient_heaters
+        self.cucoeff = self.settings.area_cost_coefficient_coolers
+        self.aexp = self.settings.cost_exponent_exchangers
+        self.hhu = self.settings.film_coefficient_heating_utility
+        self.hcu = self.settings.film_coefficient_cooling_utility
+        self.thuin = self.settings.inlet_temperature_hot_utility
+        self.thuout = self.settings.outlet_temperature_hot_utility
+        self.tcuin = self.settings.inlet_temperature_cold_utility
+        self.tcuout = self.settings.outlet_temperature_cold_utility
+        self.tmapp = self.settings.minimum_exchange_temperature 
+        self.bigM = self.settings.big_m_parameter
+        self.minqhx = self.settings.minimum_heat_exchanged_in_heat_exchanger
+
         self.results = []
         self.tuples = []
         self.cut_sets = {}
@@ -40,101 +72,95 @@ class SynheatModel:
             container = self.m,
             name = "i",
             description = "hot",
-            records = ['1', '2', '3'] 
+            records = [f'{i}' for i in range(1, self.num_hot_streams+1)] 
         )
         j = Set(
             container = self.m,
             name = "j",
             description = "cold streams",
-            records = ['1', '2', '3'] 
+            records = [f'{i}' for i in range(1, self.num_cold_streams+1)] 
         )
         k = Set(
             container = self.m, 
             name = "k",
             description = "temperature locations nok + 1",
-            records = [f'{i}' for i in range(1,5)]  
+            records = [f'{i}' for i in range(1,self.num_stages + 2)]  
         )
         st = Set(
             container = self.m, 
             name = "st",
             description = "stages",
             domain=k,
-            records = [f'{i}' for i in range(1,4)]  
+            records = [f'{i}' for i in range(1,self.num_stages + 1)]  
         )
         first = Set(
             container = self.m, 
             name = "first",
             description = "first temperature location",
             domain= k,
-            records = ['1']  
+            records = ['1']
         )
         last = Set(
             container = self.m, 
             name = "last",
             description = "last temperature location",
-            records = ['5']  
+            records = [f'{self.num_stages + 1}']
         )
 
         # 2. Define Parameters
-        nok = Parameter(
-            container = self.m, 
-            name = "nok",
-            description = "number of stages in superstructure",
-            records = 4 
-        )
         acc = Parameter(
             container = self.m,  
             name = "acc",
             description = "annual capital charge",
-            records = 0.205 
+            records = self.acc
         )
         hours = Parameter(
             container = self.m,  
             name = "hours",
             description = "operation time per year in hours",
-            records = 8000 
+            records = self.hours
         )
         fh = Parameter(
             container = self.m,  
             name = "fh",
             description = "heat capacity flowrate of hot stream",
             domain = i, 
-            records = [['1', 4], ['2', 5], ['3', 3]] 
+            records = self.fh 
         )
         fc = Parameter(
             container = self.m,  
             name = "fc",
             description = "heat capacity flowrate of the cold stream",
             domain = j, 
-            records = [['1', 6], ['2', 5], ['3', 5]] 
+            records = self.fc
         )
         thin = Parameter(
             container = self.m,  
             name = "thin",
             description = "supply temperature of hot stream",
             domain = i, 
-            records = [['1', 550], ['2', 400], ['3', 450]] 
+            records = self.thin
         )
         thout = Parameter(
             container = self.m,  
             name = "thout",
             description = "target temperature of hot stream",
             domain = i, 
-            records = [['1', 400], ['2', 300], ['3', 350]] 
+            records = self.thout
         )
         tcin = Parameter(
             container = self.m,  
             name = "tcin",
             description = "supply temperature of cold stream",
             domain = j, 
-            records = [['1', 460], ['2', 370], ['3', 300]] 
+            records = self.tcin
         )
         tcout = Parameter(
             container = self.m,  
             name = "tcout",
             description = "target temperature of cold stream",
             domain = j, 
-            records = [['1', 570], ['2', 460], ['3', 470]] 
+            records = self.tcout
         )
         ech = Parameter(
             container = self.m,  
@@ -153,92 +179,92 @@ class SynheatModel:
             name = "hh",
             description = "stream individual film coefficient hot i",
             domain = i, 
-            records = [['1', 1], ['2', 1], ['3', 1]] 
+            records = self.hh
         )
         hc = Parameter(
             container = self.m,  
             name = "hc",
             description = "stream-individual film coefficient cold j",
             domain = j, 
-            records = [['1', 1], ['2', 1], ['3', 1]] 
+            records = self.hc
         )
         hucost = Parameter(
             container = self.m,  
             name = "hucost",
             description = "cost of heating utility [$ / MWh]",
-            records = 0.01 
+            records = self.hucost 
         )
         cucost = Parameter(
             container = self.m,  
             name = "cucost",
             description = "cost of cooling utility [$ / MWh]",
-            records = 0.0025 
+            records = self.cucost
         )
         unitc = Parameter(
             container = self.m,  
             name = "unitc",
             description = "fixed charge for exchanger",
-            records = 10_000 
+            records = self.unitc
         )
         acoeff = Parameter(
             container = self.m,  
             name = "acoeff",
             description = "area cost coefficient for exchangers",
-            records = 800 
+            records = self.acoeff
         )
         hucoeff = Parameter(
             container = self.m,  
             name = "hucoeff",
             description = "area cost coefficient for heaters",
-            records = 800 
+            records = self.hucoeff
         )
         cucoeff = Parameter(
             container = self.m,  
             name = "cucoeff",
             description = "area cost coefficient for coolers",
-            records = 800 
+            records = self.cucoeff
         )
         aexp = Parameter(
             container = self.m,  
             name = "aexp",
             description = "cost exponent for exchangers",
-            records = 0.8 
+            records = self.aexp
         )
         hhu = Parameter(
             container = self.m,  
             name = "hhu",
             description = "stream individual film coefficient hot utility",
-            records = 5 
+            records = self.hhu 
         )
         hcu = Parameter(
             container = self.m,  
             name = "hcu",
             description = "stream individual film coefficient cold utility",
-            records = 1.0 
+            records = self.hcu
         )
         thuin = Parameter(
             container = self.m,  
             name = "thuin",
             description = "inlet temperature hot utility",
-            records = 600 
+            records = self.thuin
         )
         thuout = Parameter(
             container = self.m,  
             name = "thuout",
             description = "outlet temperature hot utility",
-            records = 590 
+            records = self.thuout 
         )
         tcuin = Parameter(
             container = self.m,  
             name = "tcuin",
             description = "inlet temperature cold utility",
-            records = 290 
+            records = self.tcuin 
         )
         tcuout = Parameter(
             container = self.m,  
             name = "tcuout",
             description = "outlet temperature cold utility",
-            records = 305 
+            records = self.tcuout
         )
         gamma = Parameter(
             container = self.m,  
@@ -274,7 +300,7 @@ class SynheatModel:
             container = self.m,  
             name = "tmapp",
             description = "minimum approach temperature",
-            records = 10 
+            records = self.tmapp
         )
         costheat = Parameter(
             container = self.m,  
@@ -305,13 +331,13 @@ class SynheatModel:
             container = self.m,  
             name = "bigM",
             description = "big M parameter",
-            records = 1e12 
+            records = self.bigM
         )
         minqhx = Parameter(
             container = self.m,  
             name = "minqhx",
             description = "minimum heat flow in a single heat exchanger, to avoid many heat exchangers with small flows [MW]",
-            records = 5 
+            records = self.minqhx 
         )
         # 3. Define Variables
         #  ------------ Binary variables --------------------------
@@ -665,7 +691,7 @@ class SynheatModel:
 
     def run_with_integer_cuts(self, max_cuts=10):
         """Run the model iteratively with integer cuts."""
-        for _ in range(max_cuts):
+        for _ in range(max_cuts + 1):
             model = self.solve_model()
             self.results.append(round(model.objective_value, 4))
             z_current = self.m['z'].records
@@ -703,19 +729,3 @@ class SynheatModel:
         if save_path:
             plt.savefig(save_path, dpi=300)
         plt.show()
-
-
-# Usage
-synheat_1 = SynheatModel()
-results_file = '/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/JSON/Synheat_last_run.json'
-
-# Load previous results if they exist
-synheat_1.load_results_from_json(results_file)
-
-# Run the model with integer cuts if results are not already loaded
-if not synheat_1.results:
-    synheat_1.run_with_integer_cuts(max_cuts=20)
-    synheat_1.save_results_to_json(results_file)
-
-# Plot the results
-synheat_1.plot_results()
