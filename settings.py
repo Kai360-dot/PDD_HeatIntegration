@@ -3,12 +3,13 @@ class Settings:
     Class to store all the settings of the synheat model.
     Please modify the below data to vary the number of streams, 
     and their thermodynamic properties and requirements. 
+    Note: The number of stages used is no longer specified here,
+    and has been integrated into the function call.
     """
 
     def __init__(self, arg1=None, arg2=None):
         self.num_hot_streams = 3
         self.num_cold_streams = 3
-        self.num_stages = 2
         self.annual_capital_charge_ratio = 0.205
         self.annual_operation_hours = 8000
 

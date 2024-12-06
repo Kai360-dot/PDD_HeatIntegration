@@ -13,14 +13,16 @@ import pandas as pd
 import sys
 import numpy as np
 from gamspy import Container, Set, Parameter, Variable, Equation, Model, Sum, Sense, Options
-from gamspy.math import Min, Max, sqrt
+from gamspy.math import Min, Max, sqrt, log
 import matplotlib.pyplot as plt
 import json
 import os
 from settings import Settings
+from tabulate import tabulate
+from typing import Tuple
 
 class SynheatModel:
-    def __init__(self, name="super_heat"):
+    def __init__(self, minimum_heat_flux: bool, number_of_stages, name="super_heat", utilities_only = False):
         """Initializes the synheat model, note that the objective function is
         declared in the _build_model() method."""
         # Initialize container
@@ -29,7 +31,7 @@ class SynheatModel:
         self.name = name
         self.num_hot_streams = self.settings.num_hot_streams
         self.num_cold_streams = self.settings.num_cold_streams
-        self.num_stages = self.settings.num_stages
+        self.num_stages = number_of_stages
         self.acc = self.settings.annual_capital_charge_ratio
         self.hours = self.settings.annual_operation_hours
         self.fh = self.settings.fcp_hot
@@ -56,6 +58,8 @@ class SynheatModel:
         self.tmapp = self.settings.minimum_exchange_temperature 
         self.bigM = self.settings.big_m_parameter
         self.minqhx = self.settings.minimum_heat_exchanged_in_heat_exchanger
+        self.minimum_heat_flux = minimum_heat_flux
+        self.utilities_only = utilities_only
 
         self.results = []
         self.tuples = []
@@ -64,7 +68,6 @@ class SynheatModel:
         self.cut_counter = 0
         self._build_model()
         self.i, self.j, self.k, self.z = self.m['i'], self.m['j'], self.m['k'], self.m['z']
-
 
     def _build_model(self):
         """Builds the model using sets, parameters, variables and equations."""
@@ -578,13 +581,23 @@ class SynheatModel:
         )
         logdthu[j,k].where[first[k]] = dthu[j] <= (thuout - tc[j,k]) 
 
-        minqf = Equation(
+        if self.minimum_heat_flux:
+            minqf = Equation(
             container = self.m,  
             name = "minqf",
             description = "Custom Added Equation Task G",
             domain = [i, j, k], 
             definition = q[i, j, k] >= minqhx - bigM*(1-z[i, j, k]) 
         )
+        
+        if self.utilities_only:
+            no_internal_heat_exchange = Equation(
+                container = self.m, # use your container name
+                name = "no_internal_heat_exchange",
+                description = "Forbidds internal heat exchange maximizing utility use",
+                domain = [i, j, k], # Enter the name of the set, where it should apply to each member of.
+                definition = q[i, j, k] == 0 # Enter the equation with '==', '<=', '>='
+            )
 
         # Define bounds
         dt.lo[i,j,k] = tmapp 
@@ -709,7 +722,7 @@ class SynheatModel:
         }
         with open(file_path, 'w') as json_file:
             json.dump(data, json_file, indent=4)
-
+    
     def load_results_from_json(self, file_path):
         """Loads the results from a JSON file"""
         if os.path.exists(file_path):
@@ -719,16 +732,16 @@ class SynheatModel:
                 self.tuples = data.get("tuples", [])
                 self.cut_counter = data.get("cut_counter", 0)
 
-
     def plot_results(self, save_path=None):
         """Plots the results."""
+        plt.figure(figsize=(10, 6))
         plt.plot(range(len(self.results)), self.results)
         plt.ylabel("Cost / $(yr)^{-1}$")
         plt.xlabel("Number of Integer Cuts")
-        plt.title("Impact of Integer Cuts on Objective Cost")
+        plt.title(f"Impact of Integer Cuts on Objective Cost (stages: {self.num_stages})")
         plt.grid(True)
         if save_path:
-            plt.savefig(save_path, dpi=300)
+            plt.savefig(f'{save_path}_stages_{self.num_stages}', dpi=300)
         plt.show()
 
     def _calculate_areas(self):
@@ -744,13 +757,31 @@ class SynheatModel:
                                             m['hc'], 
                                             m['dt'])
         # Using Chen approximation
-        a[i,j,k].where[st[k]] = (q.l[i,j,k]*((1/hh[i])+(1/hc[j]))/
-                                (2/3*sqrt(dt.l[i,j,k]*dt.l[i,j,k.lead(1)]) +
-                                1/6*(1e-8 + dt.l[i,j,k] + dt.l[i,j,k.lead(1)])))
-        # Using Log mean temperature
-        al[i,j,k].where[st[k]] = ((q.l[i,j,k]*((1/hh[i])+(1/hc[j])))/
+        a[i,j,k].where[st[k]] = ((q.l[i,j,k]*((1/hh[i])+(1/hc[j])))/
                                 (dt.l[i,j,k]*dt.l[i,j,k.lead(1)]*
                                 (dt.l[i,j,k]+dt.l[i,j,k.lead(1)])/2)**0.33333)
+        
+        # Using Log mean temperature seems wrong!
+        # al[i,j,k].where[st[k]] = ((q.l[i,j,k]*((1/hh[i])+(1/hc[j])))/
+        #                         (dt.l[i,j,k]*dt.l[i,j,k.lead(1)]*
+        #                         (dt.l[i,j,k]+dt.l[i,j,k.lead(1)])/2)**0.33333)
+        
+        U_inv = ((1/hh[i])+(1/hc[j]))
+        Delta_T_1 = dt.l[i,j,k]
+        Delta_T_2 = dt.l[i,j,k.lead(1)]
+
+        Delta_T_logmean = (Delta_T_1 - Delta_T_2) / log(1e-6 + Delta_T_1 / Delta_T_2)
+        
+        # Note: The following statement doesn't work in GAMS thus the 
+        # conditional where operator is implemented on the left hand side yielding
+        # the equivalent result to the below expression:
+        # if Delta_T_1 == Delta_T_2:
+        #     Delta_T_logmean = (q.l[i,j,k]) *U_inv / Delta_T_1
+
+        
+        al[i,j,k].where[st[k]] = ((q.l[i,j,k] * U_inv) / Delta_T_logmean)
+        al[i,j,k].where[((dt.l[i,j,k.lead(1)] - dt.l[i,j,k])**2 <= 1e-4) & (st[k])] = ((q.l[i,j,k] * U_inv) / dt.l[i,j,k])
+
 
         ahu, qh, hhu, thuin, tcout, dthu, qc, acu, thout, tcuin, dtcu, hcu = (m['ahu'], 
                                                                               m['qh'], 
@@ -793,7 +824,6 @@ class SynheatModel:
         # Note the below equation ommits the hours, since the utility cost are annual already
         invcost[...] = (self._current_objective_value - (self.m['costheat'] + self.m['costcool']))/self.m['acc']
 
-
     def print_data(self, active_exchangers = True, 
                    heat_exchanged_internal = True,
                    temperatures_hot_streams = True,
@@ -802,26 +832,36 @@ class SynheatModel:
                    utilities = True, 
                    utilities_cost = True,
                    fixed_investment_cost = True,
-                   ):
+                   objective_cost = True, 
+                   toLatex = False):
         _is_active = self.m['z'].records[self.m['z'].records['level']==1][['i', 'j', 'k']].apply(tuple, axis=1).tolist()
         active_z = self.m['z'].records[self.m['z'].records['level']==1][['i', 'j', 'k', 'level']]
+
+        print("==================== DATA =====================\n")
+        print(f'Current Number of integer cuts: {len(self.results) - 1} (no cuts <==> -1 )')
 
         if active_exchangers:
             print('\n')
             print("z-values of active heat exchangers inside the HEN:")
             print(active_z)
+            if toLatex:
+                print(active_z.to_latex(index = False, float_format="%.2f"))
             print('\n')
         q_internal = self.m['q'].records
         active_q_internal = q_internal[q_internal.apply(lambda row: (row['i'], row['j'], row['k']) in _is_active, axis=1)][['i', 'j', 'k', 'level']]
 
         if heat_exchanged_internal:
             print('heat exchanged (q[i, j, k]) inside HEN / [MW]\n', active_q_internal.round(2))
+            if toLatex:
+                print('heat exchanged (q[i, j, k]) inside HEN / [MW]\n', active_q_internal.to_latex(index = False, float_format="%.2f"))
             print('\n')
 
         th = self.m['th'].records
         if temperatures_hot_streams:
             print('temperature hot streams i at temperature location k')
             print(th[['i', 'k', 'level']].round(2))
+            if toLatex:
+                print(th[['i', 'k', 'level']].to_latex(index = False, float_format="%.2f"))
             print('\n')
         
 
@@ -829,6 +869,8 @@ class SynheatModel:
         if temperatures_cold_streams:
             print('temperature cold streams j at temperature location k')
             print(tc[['j', 'k', 'level']].round(2))
+            if toLatex:
+                print(tc[['j', 'k', 'level']].to_latex(index = False, float_format="%.2f"))
             print('\n')
 
 
@@ -842,13 +884,25 @@ class SynheatModel:
             log_area = log_area[log_area.apply(lambda row: (row['i'], row['j'], row['k']) in _is_active, axis=1)]
             # internal areas
             print('area calculated by Chens Approximation [m2]\n', chen_area[['i', 'j', 'k', 'value']].round(2))
+            if toLatex:
+                print('area calculated by Chens Approximation [m2]\n', chen_area[['i', 'j', 'k', 'value']].to_latex(index = False, float_format="%.2f"))
+
             print('\n')
             print('area calculated with logmean temperature difference [m2]\n', log_area[['i', 'j', 'k', 'value']].round(2))
+            if toLatex:
+                print('area calculated with logmean temperature difference [m2]\n', log_area[['i', 'j', 'k', 'value']].to_latex(index = False, float_format="%.2f"))
+
             print('\n')
             # utilities areas
             print('hot utility hx area  with cold stream j [m2]\n', self.m['ahu'].records[['j', 'value']].round(2))
+            if toLatex:
+                print('hot utility hx area  with cold stream j [m2]\n', self.m['ahu'].records[['j', 'value']].to_latex(index = False, float_format="%.2f"))
+
             print('\n')
             print('cold utility hx area with hot stream i [m2]\n', self.m['acu'].records[['i', 'value']].round(2))
+            if toLatex:
+                print('cold utility hx area with hot stream i [m2]\n', self.m['acu'].records[['i', 'value']].to_latex(index = False, float_format="%.2f"))
+
             print('\n')
 
         if utilities:
@@ -856,12 +910,18 @@ class SynheatModel:
             qh = self.m['qh'].records
             print("heat q [MW] to cold streams from hot utilities")
             print(qh[['j', 'level']].round(2))
+            if toLatex:
+                print(qh[['j', 'level']].to_latex(index = False, float_format="%.2f"))
+
             print('\n')
 
             print("cold utility heat [MW]")
             qc = self.m['qc'].records
             print("heat q [MW] from hot streams to cold utilities")
             print(qc[['i', 'level']].round(2))
+            if toLatex:
+                print(qc[['i', 'level']].to_latex(index = False, float_format="%.2f"))
+                
             print('\n')
 
 
@@ -877,3 +937,64 @@ class SynheatModel:
         if fixed_investment_cost:
             print('The fixed investment cost: [USD] (total paid on day one)')
             print(self.m['invcost'].records['value'][0].round(2))
+            print('\n')
+        
+        if objective_cost:
+            print("Objective Annual Cost [USD / yr]")
+            print(round(self._current_objective_value, 2))
+            print("\n")
+        
+        if toLatex: # prints table of costs
+            heating_cost = self.m['costheat'].records['value'][0]
+            cooling_cost = self.m['costcool'].records['value'][0]
+            investment_cost = self.m['invcost'].records['value'][0]
+            annual_investment_cost = investment_cost * self.acc
+            print("\\hline")
+            print("Category & Cost\\\\")
+            print("\\hline")
+            print(f"Heating / $\\SI{{}}{{\\dollar\\per\\year}}$ & {heating_cost:.2f} \\\\")
+            print(f"Cooling / $\\SI{{}}{{\\dollar\\per\\year}}$ & {cooling_cost:.2f}\\\\")
+            print(f"Investment / $\\SI{{}}{{\\dollar\\per\\year}}$ & {annual_investment_cost:.2f}\\\\")
+            print(f"Investment (total) / $\\SI{{}}{{\\dollar}}$ & {investment_cost:.2f}\\\\")
+            print(f"Objective Cost / $\\SI{{}}{{\\dollar\\per\\year}}$ & {self._current_objective_value:.2f}\\\\")
+            print("\\hline")
+
+
+    def return_best_result(self, print_output = False) -> Tuple[int, float, str]:
+        """In order for the results to be available
+        the code has to be run with the required amount of integer cuts
+        or alternatively the results need to be fetched from the appropriate JSON 
+        using SynheatModel.load_results_from_json(file_path).
+        
+        Returns:
+        Tuple[Int ,float, str]: [int_cut_index, objective_val, LaTeX table best z configuration]
+        """
+        min_index = np.argmin(self.results)
+        best_result = self.results[min_index]
+        best_z_tuple = self.tuples[min_index]
+        best_z_tuple_tab = tabulate(best_z_tuple, headers= ["i", "j", "k"], tablefmt="latex")
+        if print_output:
+            print(f'Best result found: {best_result} \nafter number of integer cuts {min_index}')
+            print(f'At z-configuration (active heat exchangers) \n{best_z_tuple_tab}')
+        return min_index, best_result, best_z_tuple_tab
+
+    def return_worst_result(self, print_output = False) -> Tuple[int, float, str]:
+        """In order for the results to be available
+        the code has to be run with the required amount of integer cuts
+        or alternatively the results need to be fetched from the appropriate JSON 
+        using SynheatModel.load_results_from_json(file_path).
+        
+        Returns:
+        Tuple[Int ,float, str]: [int_cut_index, objective_val, LaTeX table worst z configuration]
+        """
+        max_index = np.argmax(self.results)
+        worst_result = self.results[max_index]
+        worst_z_tuple = self.tuples[max_index]
+        worst_z_tuple_tab = tabulate(worst_z_tuple, headers= ["i", "j", "k"], tablefmt="latex")
+        if print_output:
+            print(f'Worst (optimal) result found: {worst_result} \nafter number of integer cuts {max_index}')
+            print(f'At z-configuration (active heat exchangers) \n{worst_z_tuple_tab}')
+        return max_index, worst_result, worst_z_tuple_tab
+
+    
+        
