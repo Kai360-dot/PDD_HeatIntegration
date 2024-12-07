@@ -1,4 +1,4 @@
-Heat Integration Model from the PDD class at ETHZ.
+# Heat Integration Model from the PDD class at ETHZ.
 The model this is based upon was originally published here:
 
 Yee, T F, and Grossmann, I E, Simultaneous Optimization of Models for
@@ -17,7 +17,7 @@ modify the problems mathematical structure and rerun several
 modified problems in loops and then store and manipulate or
 plot the resulting data. 
 
-To the user: 
+# To the user: 
 Please modify the settings in the settings.py file and instantiate 
 an instance of the class as shown below:
 
@@ -62,12 +62,10 @@ Luckily can be done very easily as shown below (please create a folder named JSO
 
 your_model_name.save_results_to_json("ENTER YOUR FILEPATH")
 
-To later read the saved data from the JSON files use:
+To later read the saved data from the JSON files use (if file doesn't exists -> runs with 100 integer cuts and saves results):
 
-# Load previous results if they exist
 your_model_name.load_results_from_json("ENTER YOUR FILEPATH")
 
-# Run the model with 100 integer cuts if results are not already loaded
 if not your_model_name.results:
     your_model_name.run_with_integer_cuts(max_cuts=100)
     your_model_name.save_results_to_json("ENTER YOUR FILEPATH")
