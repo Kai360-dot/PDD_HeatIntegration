@@ -48,27 +48,24 @@ for c_str in cold_streams:
 print(f'Task A: Cooling: {sum_cooling_duty} MW.')
 
 
-# # Task E
+# Task E
 
-# synheat_1 = SynheatModel(minimum_heat_flux=False)
-# synheat_1.solve_model()
-# print("==========Task E===============")
-# synheat_1.print_data(toLatex=True)
+synheat_1 = SynheatModel(minimum_heat_flux=False, number_of_stages=2)
+synheat_1.solve_model()
+print("==========Task E===============")
+synheat_1.print_data(toLatex=False)
 
 # Task G
 
 """The below code runs the results for one integer cut only using
 a specified amount of stages."""
 
-# print("----------One Int Cut Solution ---------------")
-# synheat_3 = SynheatModel(minimum_heat_flux=True, number_of_stages=2)
-# synheat_3.run_with_integer_cuts(1)
-# # synheat_3.plot_results()
-# # synheat_3.print_best_result()
-# # synheat_3.print_worst_result()
-# synheat_3.print_data(toLatex=True)
-
-
+print("----------One Int Cut Solution ---------------")
+synheat_3 = SynheatModel(minimum_heat_flux=True, number_of_stages=2)
+synheat_3.run_with_integer_cuts(1)
+synheat_3.return_best_result(print_output=True)
+synheat_3.return_worst_result(print_output=True)
+synheat_3.print_data(toLatex=False)
 
 """
 Finding the best solution possible:
@@ -100,7 +97,7 @@ for stages in range(1, 7):
         synheat_2.save_results_to_json(results_file)
     
     # Plot the results for the current stage
-    # synheat_2.plot_results(save_path=plot_path)
+    synheat_2.plot_results(save_path=plot_path) 
     
     # Retrieve the best and worst results
     best_result = synheat_2.return_best_result()
@@ -130,4 +127,4 @@ plt.title('Best and Worst Objective Values for Different Stages')
 plt.legend()
 plt.grid(True)
 plt.savefig('/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/Figures/Best_Worst_Objective_Values.png')
-plt.show()
+plt.show() 

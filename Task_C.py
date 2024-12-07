@@ -9,24 +9,24 @@ cont = Container()
 
 # 1. Define Sets
 m = Set(
-    container = cont,# use your container name
+    container = cont,
     name = "m",
     description = "set of hot utilities (only steam here)",
-    records = ['1'] # Enter like: ["Chicken", "Beef", "Eggs", "Milk"]
+    records = ['1'] 
 )
 
 n = Set(
-    container = cont,# use your container name
+    container = cont,
     name = "n",
     description = "set of cold utilities (only cooling water here)",
-    records = ['1'] # Enter like: ["Chicken", "Beef", "Eggs", "Milk"]
+    records = ['1'] 
 )
 
 k = Set(
-    container = cont,# use your container name
+    container = cont,
     name = "k",
     description = "set of intervals",
-    records = [f'{i}' for i in range(1, 10)] # Enter like: ["Chicken", "Beef", "Eggs", "Milk"]
+    records = [f'{i}' for i in range(1, 10)] 
 )
 
 k_int = Set(
@@ -39,25 +39,25 @@ k_int = Set(
 
 # 2. Define Parameters
 ch = Parameter(
-    container = cont, # use your container name
+    container = cont, 
     name = "ch",
     description = "unit cost of hot utility m [$/MWh]",
-    domain = m, # Enter the name of the set, where it should apply to each member of.
-    records = [['1', 0.01]] # Enter like this: [["Yellow", "Giraffe", 4], ["Brown", "Bear", 10]]
+    domain = m, 
+    records = [['1', 0.01]] 
 )
 cc = Parameter(
-    container = cont, # use your container name
+    container = cont, 
     name = "cc",
     description = "unit cost of cold utility n [$/MWh]",
-    domain = n, # Enter the name of the set, where it should apply to each member of.
-    records = [['1', 0.0025]] # Enter like this: [["Yellow", "Giraffe", 4], ["Brown", "Bear", 10]]
+    domain = n, 
+    records = [['1', 0.0025]] 
 )
 
 deficit = Parameter(
-    container = cont, # use your container name
+    container = cont, 
     name = "def",
     description = "deficit on interval k",
-    domain = k, # Enter the name of the set, where it should apply to each member of.
+    domain = k, 
     records = [['1', -180], 
                ['2', -140], 
                ['3', -70], 
@@ -67,31 +67,31 @@ deficit = Parameter(
                ['7', 90], 
                ['8', 0], 
                ['9', 50], 
-               ] # Enter like this: [["Yellow", "Giraffe", 4], ["Brown", "Bear", 10]]
+               ] 
 )
 
 # 3. Define Variables
 r = Variable(
-    container = cont, #use your container name
+    container = cont, 
     name = "r",
-    domain = k,  # Enter the name of the set, where it should apply to each member of.
-    type = "Positive", # e.g. "Positive"
+    domain = k,  
+    type = "Positive", 
     description = "residual at stage k"
 )
 
 qs = Variable(
-    container = cont, #use your container name
+    container = cont, 
     name = "qs",
-    domain = m,  # Enter the name of the set, where it should apply to each member of.
-    type = "Positive", # e.g. "Positive"
+    domain = m,  
+    type = "Positive", 
     description = "heat load of utility m (given hot utility)"
 )
 
 qw = Variable(
-    container = cont, #use your container name
+    container = cont, 
     name = "qw",
-    domain = n,  # Enter the name of the set, where it should apply to each member of.
-    type = "Positive", # e.g. "Positive"
+    domain = n,  
+    type = "Positive", 
     description = "heat load of utility n (given cold utility)"
 )
 
@@ -125,12 +125,12 @@ z = Sum(m, ch[m]*qs[m]) + Sum(n, cc[n]*qw[n])
 
 # 6. Create and Solve the Model
 MinUtil = Model(
-    container = cont, # use your container name,
+    container = cont, 
     name = "MinUtil",
     equations = cont.getEquations(),
-    problem = "LP", # could be LP, NLP, MILP, MINLP
-    sense = Sense.MIN, # Either: MIN or MAX
-    objective = z # Enter the var. name of objective function
+    problem = "LP", 
+    sense = Sense.MIN, 
+    objective = z 
 )
 MinUtil.solve(
     output = sys.stdout,
@@ -140,17 +140,10 @@ MinUtil.solve(
     )
 )
 # 7. Print Results
-# print(MinUtil.getVariableListing())
 print('Residuals: \n',r.records)
 print('Cooling:\n', qw.records)
 print('Heating:\n', qs.records)
 print(f"Optimal Cost: {MinUtil.objective_value}")
-# print('k_int_records', k_int.records)
-MinUtil.toLatex(path="/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/TEX/Task_C", generate_pdf=False)
-# Generate GAMS File using:
-MinUtil.toGams(path="/Users/kairuth/Desktop/MasterStudium/PDD/Marked_2/GAMS/Task_C")
-
-# Generate Custom Latex Output:
 k_list = r.records['k'].tolist()
 residual_list = r.records['level'].tolist()
 for i, k in enumerate(k_list):
