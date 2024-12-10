@@ -51,7 +51,7 @@ print(f'Task A: Cooling: {sum_cooling_duty} MW.')
 # Task E
 
 synheat_1 = SynheatModel(minimum_heat_flux=False, number_of_stages=2)
-synheat_1.solve_model()
+synheat_1.run_with_integer_cuts(0)
 print("==========Task E===============")
 synheat_1.print_data(toLatex=False)
 
