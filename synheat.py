@@ -655,7 +655,7 @@ class SynheatModel:
             + utility_cost 
         )
 
-    def solve_model(self):
+    def _solve_model(self):
         """Initializes and solves the model"""
         model = Model(
             container=self.m,
@@ -706,7 +706,7 @@ class SynheatModel:
     def run_with_integer_cuts(self, max_cuts=10):
         """Run the model iteratively with integer cuts."""
         for _ in range(max_cuts + 1):
-            model = self.solve_model()
+            model = self._solve_model()
             self.results.append(round(model.objective_value, 4))
             z_current = self.m['z'].records
             current_tuples = z_current[z_current['level']==1][['i', 'j', 'k']].apply(tuple, axis=1).tolist()
@@ -838,7 +838,7 @@ class SynheatModel:
         active_z = self.m['z'].records[self.m['z'].records['level']==1][['i', 'j', 'k', 'level']]
 
         print("==================== DATA =====================\n")
-        print(f'Current Number of integer cuts: {len(self.results) - 1} (no cuts <==> -1 )')
+        print(f'Current Number of integer cuts: {len(self.results) - 1}')
 
         if active_exchangers:
             print('\n')
@@ -997,4 +997,3 @@ class SynheatModel:
         return max_index, worst_result, worst_z_tuple_tab
 
     
-        
