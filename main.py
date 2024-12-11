@@ -67,11 +67,20 @@ synheat_3.return_best_result(print_output=True)
 synheat_3.return_worst_result(print_output=True)
 synheat_3.print_data(toLatex=False)
 
+"""Best solution with two stage model."""
+print("----------10 Int Cut Solution ---------------")
+synheat_4 = SynheatModel(minimum_heat_flux=True, number_of_stages=2)
+synheat_4.run_with_integer_cuts(100)
+synheat_4.return_best_result(print_output=True)
+synheat_4.print_data(toLatex=False)
+
+# report end
 """
 Finding the best solution possible:
 The below code is meant to run with multiple integer cuts and vary the number of stages used 
 to model the HEN, 
-it seeks to find the best/worst solution within a specified range of integer cuts (e.g. <100)"""
+it seeks to find the best/worst solution within a specified range of integer cuts (e.g. <100)
+Not part of the Tasks: (see Appendix for results)"""
 
 # Lists to store best and worst objective values for each stage
 best_objective_values = []
